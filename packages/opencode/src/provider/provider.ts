@@ -36,6 +36,7 @@ import { createTogetherAI } from "@ai-sdk/togetherai"
 import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
+import { RequestLog } from "./request-log"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -888,6 +889,24 @@ export namespace Provider {
         const fetchFn = customFetch ?? fetch
         const opts = init ?? {}
 
+        const url = typeof input === 'string' ? input : input.url
+        const method = opts.method || 'POST'
+        const headers = opts.headers || {}
+        
+        // Log request with body
+        RequestLog.logRequest({
+          providerID: model.providerID,
+          modelID: model.id,
+          url,
+          method,
+          headers: Object.fromEntries(
+            Object.entries(headers).filter(([key]) => 
+              !key.toLowerCase().includes('authorization')
+            )
+          ),
+          body: opts.body
+        })
+
         if (options["timeout"] !== undefined && options["timeout"] !== null) {
           const signals: AbortSignal[] = []
           if (opts.signal) signals.push(opts.signal)
@@ -898,11 +917,63 @@ export namespace Provider {
           opts.signal = combined
         }
 
-        return fetchFn(input, {
-          ...opts,
-          // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-          timeout: false,
-        })
+        const startTime = Date.now()
+        try {
+          const response = await fetchFn(input, {
+            ...opts,
+            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+            timeout: false,
+          })
+          
+          const duration = Date.now() - startTime
+          
+          // Check if this is a streaming response
+          const contentType = response.headers.get('content-type') || ''
+          const isStreamResponse = contentType.includes('text/event-stream') || 
+                                 contentType.includes('application/x-ndjson') ||
+                                 contentType.includes('application/stream')
+          
+          if (isStreamResponse) {
+            // For streaming responses, use the advanced logging function
+            await RequestLog.logStreamingResponse({
+              providerID: model.providerID,
+              modelID: model.id,
+              status: response.status,
+              headers: Object.fromEntries(response.headers.entries()),
+              response: response,
+              duration
+            })
+          } else {
+            // For non-streaming responses, try to read the body
+            const responseClone = response.clone()
+            let responseBody
+            try {
+              responseBody = await responseClone.text()
+            } catch {
+              responseBody = '[Unable to read response body]'
+            }
+            
+            RequestLog.logResponse({
+              providerID: model.providerID,
+              modelID: model.id,
+              status: response.status,
+              headers: Object.fromEntries(response.headers.entries()),
+              body: responseBody,
+              duration
+            })
+          }
+          
+          return response
+        } catch (error) {
+          const duration = Date.now() - startTime
+          RequestLog.logError({
+            providerID: model.providerID,
+            modelID: model.id,
+            error: error as Error,
+            duration
+          })
+          throw error
+        }
       }
 
       // Special case: google-vertex-anthropic uses a subpath import
