@@ -946,7 +946,6 @@ export namespace Provider {
               headers: Object.fromEntries(response.headers.entries()),
               response: response,
               duration,
-              traceId
             })
           } else {
             // For non-streaming responses, try to read the body
