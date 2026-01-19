@@ -893,6 +893,9 @@ export namespace Provider {
         const method = opts.method || 'POST'
         const headers = opts.headers || {}
         
+        // Generate trace ID for request-response correlation
+        const traceId = RequestLog.generateTraceId()
+        
         // Log request with body
         RequestLog.logRequest({
           providerID: model.providerID,
@@ -904,7 +907,8 @@ export namespace Provider {
               !key.toLowerCase().includes('authorization')
             )
           ),
-          body: opts.body
+          body: opts.body,
+          traceId
         })
 
         if (options["timeout"] !== undefined && options["timeout"] !== null) {
@@ -941,7 +945,8 @@ export namespace Provider {
               status: response.status,
               headers: Object.fromEntries(response.headers.entries()),
               response: response,
-              duration
+              duration,
+              traceId
             })
           } else {
             // For non-streaming responses, try to read the body
@@ -959,7 +964,8 @@ export namespace Provider {
               status: response.status,
               headers: Object.fromEntries(response.headers.entries()),
               body: responseBody,
-              duration
+              duration,
+              traceId
             })
           }
           
@@ -970,7 +976,8 @@ export namespace Provider {
             providerID: model.providerID,
             modelID: model.id,
             error: error as Error,
-            duration
+            duration,
+            traceId
           })
           throw error
         }

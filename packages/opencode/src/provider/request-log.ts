@@ -1,11 +1,17 @@
 import { Log } from "../util/log"
 import { Flag } from "../flag/flag"
+import { randomUUID } from "crypto"
 
 export namespace RequestLog {
   export const logger = Log.create({ service: "provider-request" })
 
   // Configuration for streaming response logging
-  const STREAM_LOG_SAMPLE_SIZE = 5 // Number of lines to sample from streams
+  const STREAM_LOG_SAMPLE_SIZE = 10000 // Number of lines to sample from streams
+
+  // Generate a unique trace ID for request-response correlation
+  export function generateTraceId(): string {
+    return randomUUID().split('-')[0] // Use short UUID for readability
+  }
 
   export function logRequest(params: {
     providerID: string
@@ -14,6 +20,7 @@ export namespace RequestLog {
     method: string
     headers: Record<string, any>
     body?: any
+    traceId?: string
   }) {
     const { body, ...safeParams } = params
     
@@ -31,6 +38,7 @@ export namespace RequestLog {
     headers?: Record<string, any>
     body?: any
     duration: number
+    traceId?: string
   }) {
     const { body, ...safeParams } = params
     
@@ -71,13 +79,15 @@ export namespace RequestLog {
     modelID: string
     error: Error
     duration: number
+    traceId?: string
   }) {
     logger.error("API Error", {
       providerID: params.providerID,
       modelID: params.modelID,
       error: params.error.message,
       stack: params.error.stack,
-      duration: `${params.duration}ms`
+      duration: `${params.duration}ms`,
+      traceId: params.traceId
     })
   }
 
